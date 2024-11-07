@@ -39,6 +39,9 @@ static int dax_hmem_probe(struct platform_device *pdev)
 		.memmap_on_memory = false,
 	};
 
+	// release the resource reserved at e820__reserve_resources
+	release_mem_region(mri->range.start, range_len(&mri->range));
+
 	return PTR_ERR_OR_ZERO(devm_create_dev_dax(&data));
 }
 

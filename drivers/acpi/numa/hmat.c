@@ -803,20 +803,22 @@ static void hmat_register_target_perf(struct memory_target *target, int access)
 
 static void hmat_register_target_devices(struct memory_target *target)
 {
-	struct resource *res;
+	// struct resource *res;
 
-	/*
-	 * Do not bother creating devices if no driver is available to
-	 * consume them.
-	 */
-	if (!IS_ENABLED(CONFIG_DEV_DAX_HMEM))
-		return;
+	// /*
+	//  * Do not bother creating devices if no driver is available to
+	//  * consume them.
+	//  */
+	// if (!IS_ENABLED(CONFIG_DEV_DAX_HMEM))
+	// 	return;
 
-	for (res = target->memregions.child; res; res = res->sibling) {
-		int target_nid = pxm_to_node(target->memory_pxm);
+	// for (res = target->memregions.child; res; res = res->sibling) {
+	// 	int target_nid = pxm_to_node(target->memory_pxm);
 
-		hmem_register_resource(target_nid, res);
-	}
+	// 	hmem_register_resource(target_nid, res);
+	// }
+
+	return;
 }
 
 static void hmat_register_target(struct memory_target *target)
