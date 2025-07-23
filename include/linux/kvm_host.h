@@ -584,6 +584,7 @@ struct kvm_memory_slot {
 	gfn_t base_gfn;
 	unsigned long npages;
 	unsigned long *dirty_bitmap;
+	unsigned long *fmsync_dirty_bitmap; // Zezhou: huge-page granularity dirty bitmap.
 	struct kvm_arch_memory_slot arch;
 	unsigned long userspace_addr;
 	u32 flags;
@@ -1442,6 +1443,7 @@ void kvm_arch_mmu_enable_log_dirty_pt_masked(struct kvm *kvm,
 					gfn_t gfn_offset,
 					unsigned long mask);
 void kvm_arch_sync_dirty_log(struct kvm *kvm, struct kvm_memory_slot *memslot);
+void kvm_arch_mmu_fmsync_dirty_log(struct kvm *kvm, struct kvm_memory_slot *memslot, bool is_huge);
 
 #ifndef CONFIG_KVM_GENERIC_DIRTYLOG_READ_PROTECT
 int kvm_vm_ioctl_get_dirty_log(struct kvm *kvm, struct kvm_dirty_log *log);

@@ -1441,6 +1441,10 @@ struct kvm_vfio_spapr_tce {
 #define KVM_SET_USER_MEMORY_REGION2 _IOW(KVMIO, 0x49, \
 					 struct kvm_userspace_memory_region2)
 
+// Zezhou: add the fmsync dirty hugepage log in ioctl flag.
+#define KVM_FMSYNC_GET_DIRTY_LOG_HUGE   _IOWR(KVMIO, 0xe4, struct kvm_dirty_log)
+#define KVM_FMSYNC_GET_DIRTY_LOG_BASE_WITH_SPLIT   _IOWR(KVMIO, 0xe5, struct kvm_dirty_log)
+
 /* enable ucontrol for s390 */
 struct kvm_s390_ucas_mapping {
 	__u64 user_addr;

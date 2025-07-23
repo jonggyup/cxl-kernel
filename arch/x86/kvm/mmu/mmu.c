@@ -1327,6 +1327,12 @@ static void kvm_mmu_write_protect_pt_masked(struct kvm *kvm,
 	}
 }
 
+// fmsync dirty log, calls into tdp_mmu.
+void kvm_arch_mmu_fmsync_dirty_log(struct kvm *kvm, struct kvm_memory_slot *memslot, bool is_huge) {
+	kvm_tdp_mmu_fmsync_dirty_log(kvm, memslot, is_huge);
+	return;
+}
+
 /**
  * kvm_mmu_clear_dirty_pt_masked - clear MMU D-bit for PT level pages, or write
  * protect the page if the D-bit isn't supported.
