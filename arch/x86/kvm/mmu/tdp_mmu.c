@@ -1625,7 +1625,99 @@ void kvm_tdp_mmu_clear_dirty_pt_masked(struct kvm *kvm,
 	for_each_tdp_mmu_root(kvm, root, slot->as_id)
 		clear_dirty_pt_masked(kvm, root, gfn, mask, wrprot);
 }
-bool kvm_tdp_mmu_fmsync_dirty_log(struct kvm *kvm,
+
+/* SPDX-License-Identifier: GPL-2.0 */
+#include <linux/kvm_host.h>
+#include "tdp_mmu.h"
+
+/*
+ * Collect dirty pages for @slot into slot->fmsync_dirty_bitmap,
+ * write-protect them, and return whether any pages were dirtied.
+ *
+ * When called repeatedly until it returns false, all pages are guaranteed
+ * clean because:
+ *   1. A remote-TLB flush forces CPUs to write back D/A bits.
+ *   2. Each dirty SPTE is made read-only before the next iteration.
+ */
+bool kvm_tdp_mmu_fmsync_dirty_log(struct kvm                     *kvm,
+                                  const struct kvm_memory_slot   *slot,
+                                  bool                            is_huge)
+{
+        struct kvm_mmu_page *root;
+        struct tdp_iter iter;
+        unsigned long dirty_count = 0;
+        bool flush_needed = false;
+        unsigned long idx;
+
+        const gfn_t start_gfn = slot->base_gfn;
+        const gfn_t end_gfn   = slot->base_gfn + slot->npages;  /* exclusive */
+
+        /* Walk range rounded to 2 MiB so boundary leaves are visited. */
+        const gfn_t walk_lo = ALIGN_DOWN(start_gfn,
+                                         KVM_PAGES_PER_HPAGE(PG_LEVEL_2M));
+        const gfn_t walk_hi = ALIGN(end_gfn,
+                                    KVM_PAGES_PER_HPAGE(PG_LEVEL_2M));
+
+        lockdep_assert_held_write(&kvm->mmu_lock);
+
+        if (!is_huge)
+		kvm_mmu_try_split_huge_pages(kvm, slot, start_gfn, end_gfn, PG_LEVEL_4K);
+       /* 1 – push all CPU-cached D/A bits to memory before scanning. */
+        kvm_flush_remote_tlbs(kvm);
+        smp_mb();                              /* pairs with CPU SPTE updates */
+
+        for_each_valid_tdp_mmu_root_yield_safe(kvm, root, slot->as_id) {
+                rcu_read_lock();
+
+                tdp_root_for_each_leaf_pte(iter, root, walk_lo, walk_hi) {
+                        u64 new_spte;
+                        gfn_t leaf_start, leaf_end;
+
+                        if (!is_shadow_present_pte(iter.old_spte))
+                                continue;
+
+                        /* Compute overlap with the real slot. */
+                        leaf_start = max(iter.gfn, start_gfn);
+                        leaf_end   = min(iter.gfn +
+                                            KVM_PAGES_PER_HPAGE(iter.level),
+                                         end_gfn);
+                        if (leaf_start >= leaf_end)
+                                continue;      /* leaf outside slot */
+
+                        if (!is_dirty_spte(iter.old_spte))
+                                continue;
+
+                        /* ---- mark bitmap ---- */
+                        if (is_huge) {                         /* 2 MiB idx */
+                                idx = (leaf_start - start_gfn) >>
+                                      (HPAGE_SHIFT - PAGE_SHIFT);
+                                set_bit(idx, slot->fmsync_dirty_bitmap);
+                        } else if (iter.level == PG_LEVEL_4K) { /* 4 K leaf */
+                                idx = leaf_start - start_gfn;
+                                set_bit(idx, slot->fmsync_dirty_bitmap);
+                        } else {                               /* 2 MiB leaf */
+                                idx = leaf_start - start_gfn;
+                                bitmap_set(slot->fmsync_dirty_bitmap,
+                                           idx, leaf_end - leaf_start);
+                        }
+
+                        /* ---- clear D-bit *and* write permission ---- */
+                        new_spte = iter.old_spte &
+                                   ~(shadow_dirty_mask | PT_WRITABLE_MASK);
+
+                        if (tdp_mmu_set_spte_atomic(kvm, &iter, new_spte))
+                                kvm_flush_remote_tlbs_range(kvm, iter.gfn,
+                                        KVM_PAGES_PER_HPAGE(iter.level));
+
+                        ++dirty_count;
+                        flush_needed = true;
+                }
+                rcu_read_unlock();
+        }
+
+        return flush_needed;
+}
+/*bool kvm_tdp_mmu_fmsync_dirty_log(struct kvm *kvm,
                                   const struct kvm_memory_slot *slot,
                                   bool is_huge)
 {
@@ -1636,9 +1728,8 @@ bool kvm_tdp_mmu_fmsync_dirty_log(struct kvm *kvm,
     unsigned long idx;
 
     const gfn_t start_gfn = slot->base_gfn;
-    const gfn_t end_gfn   = slot->base_gfn + slot->npages;   /* exclusive */
+    const gfn_t end_gfn   = slot->base_gfn + slot->npages;
 
-    /* Walk range rounded outwards to 2 MiB so boundary leaves are visited. */
     const gfn_t walk_lo = ALIGN_DOWN(start_gfn,
                                      KVM_PAGES_PER_HPAGE(PG_LEVEL_2M));
     const gfn_t walk_hi = ALIGN(end_gfn,
@@ -1647,8 +1738,11 @@ bool kvm_tdp_mmu_fmsync_dirty_log(struct kvm *kvm,
     gfn_t leaf_start, leaf_end;
 
     lockdep_assert_held_write(&kvm->mmu_lock);
-    if (!is_huge)
-        kvm_mmu_try_split_huge_pages(kvm, slot, start_gfn, end_gfn, PG_LEVEL_4K);
+    kvm_flush_remote_tlbs(kvm);
+    smp_mb();
+
+//    if (!is_huge)
+//        kvm_mmu_try_split_huge_pages(kvm, slot, start_gfn, end_gfn, PG_LEVEL_4K);
 
 
     for_each_valid_tdp_mmu_root_yield_safe(kvm, root, slot->as_id) {
@@ -1658,7 +1752,7 @@ bool kvm_tdp_mmu_fmsync_dirty_log(struct kvm *kvm,
 
             if (!is_shadow_present_pte(iter.old_spte))
                 continue;
-/*
+
             if (iter.level != PG_LEVEL_4K &&
                 (!is_huge || iter.level == PG_LEVEL_1G)) {
 
@@ -1673,33 +1767,28 @@ bool kvm_tdp_mmu_fmsync_dirty_log(struct kvm *kvm,
                 tdp_iter_restart(&iter);
                 continue;
             }
-*/
-            /* Compute overlap with the real slot. */
             leaf_start = max(iter.gfn, start_gfn);
             leaf_end   = min(iter.gfn +
                                    KVM_PAGES_PER_HPAGE(iter.level),
                                    end_gfn);
             if (leaf_start >= leaf_end)
-                continue;               /* leaf outside slot */
-
+                continue;
             if (!is_dirty_spte(iter.old_spte))
                 continue;
 
-            /* ---- update bitmap ---- */
-            if (is_huge) {                              /* 2 MiB granularity */
+            if (is_huge) {
                 idx = (leaf_start - start_gfn) >>
                       (HPAGE_SHIFT - PAGE_SHIFT);
                 set_bit(idx, slot->fmsync_dirty_bitmap);
-            } else if (iter.level == PG_LEVEL_4K) {     /* 4 K leaf */
+            } else if (iter.level == PG_LEVEL_4K) {
                 idx = leaf_start - start_gfn;
                 set_bit(idx, slot->fmsync_dirty_bitmap);
-            } else {                                    /* 2 MiB leaf */
+            } else {
                 idx = leaf_start - start_gfn;
                 bitmap_set(slot->fmsync_dirty_bitmap,
                            idx, (unsigned long)(leaf_end - leaf_start));
             }
 
-            /* ---- clear SPTE and flush ---- */
             new_spte = spte_ad_enabled(iter.old_spte) ?
                            (iter.old_spte & ~shadow_dirty_mask) :
                            (iter.old_spte & ~PT_WRITABLE_MASK);
@@ -1717,7 +1806,7 @@ bool kvm_tdp_mmu_fmsync_dirty_log(struct kvm *kvm,
 //   	printk("[fmsync]: dirty_count=%ld, switchover=%d\n", dirty_count, is_huge);
 
     return flush_needed;
-}
+}*/
 static void zap_collapsible_spte_range(struct kvm *kvm,
 				       struct kvm_mmu_page *root,
 				       const struct kvm_memory_slot *slot)
