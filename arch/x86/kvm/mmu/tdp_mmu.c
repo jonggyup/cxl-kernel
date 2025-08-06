@@ -1608,27 +1608,17 @@ static void clear_dirty_pt_masked(struct kvm *kvm, struct kvm_mmu_page *root,
 	rcu_read_unlock();
 }
 
-/*
- * Clears the dirty status of all the 4k SPTEs mapping GFNs for which a bit is
- * set in mask, starting at gfn. The given memslot is expected to contain all
- * the GFNs represented by set bits in the mask. If AD bits are enabled,
- * clearing the dirty status will involve clearing the dirty bit on each SPTE
- * or, if AD bits are not enabled, clearing the writable bit on each SPTE.
- */
+
 void kvm_tdp_mmu_clear_dirty_pt_masked(struct kvm *kvm,
-				       struct kvm_memory_slot *slot,
-				       gfn_t gfn, unsigned long mask,
-				       bool wrprot)
+                                      struct kvm_memory_slot *slot,
+                                      gfn_t gfn, unsigned long mask,
+                                      bool wrprot)
 {
-	struct kvm_mmu_page *root;
+       struct kvm_mmu_page *root;
 
-	for_each_tdp_mmu_root(kvm, root, slot->as_id)
-		clear_dirty_pt_masked(kvm, root, gfn, mask, wrprot);
+       for_each_tdp_mmu_root(kvm, root, slot->as_id)
+               clear_dirty_pt_masked(kvm, root, gfn, mask, wrprot);
 }
-
-/* SPDX-License-Identifier: GPL-2.0 */
-#include <linux/kvm_host.h>
-#include "tdp_mmu.h"
 
 /*
  * Collect dirty pages for @slot into slot->fmsync_dirty_bitmap,
@@ -1639,32 +1629,32 @@ void kvm_tdp_mmu_clear_dirty_pt_masked(struct kvm *kvm,
  *   1. A remote-TLB flush forces CPUs to write back D/A bits.
  *   2. Each dirty SPTE is made read-only before the next iteration.
  */
+/*
 bool kvm_tdp_mmu_fmsync_dirty_log(struct kvm                     *kvm,
                                   const struct kvm_memory_slot   *slot,
-                                  bool                            is_huge)
+				  bool                            is_huge)
 {
-        struct kvm_mmu_page *root;
-        struct tdp_iter iter;
-        unsigned long dirty_count = 0;
-        bool flush_needed = false;
-        unsigned long idx;
+	struct kvm_mmu_page *root;
+	struct tdp_iter iter;
+	unsigned long dirty_count = 0;
+	bool flush_needed = false;
+	unsigned long idx;
+	u64 base_count_a = 0;
+	u64 base_count_b = 0;
+	u64 base_count_c = 0;
 
-        const gfn_t start_gfn = slot->base_gfn;
-        const gfn_t end_gfn   = slot->base_gfn + slot->npages;  /* exclusive */
+	const gfn_t start_gfn = slot->base_gfn;
+	const gfn_t end_gfn   = slot->base_gfn + slot->npages;
 
-        /* Walk range rounded to 2 MiB so boundary leaves are visited. */
-        const gfn_t walk_lo = ALIGN_DOWN(start_gfn,
-                                         KVM_PAGES_PER_HPAGE(PG_LEVEL_2M));
-        const gfn_t walk_hi = ALIGN(end_gfn,
-                                    KVM_PAGES_PER_HPAGE(PG_LEVEL_2M));
+	const gfn_t walk_lo = ALIGN_DOWN(start_gfn,
+				  KVM_PAGES_PER_HPAGE(PG_LEVEL_2M));
+	const gfn_t walk_hi = ALIGN(end_gfn,
+			     KVM_PAGES_PER_HPAGE(PG_LEVEL_2M));
 
-        lockdep_assert_held_write(&kvm->mmu_lock);
-
-        if (!is_huge)
+	lockdep_assert_held_write(&kvm->mmu_lock);
+	if (!is_huge) {
 		kvm_mmu_try_split_huge_pages(kvm, slot, start_gfn, end_gfn, PG_LEVEL_4K);
-       /* 1 – push all CPU-cached D/A bits to memory before scanning. */
-        kvm_flush_remote_tlbs(kvm);
-        smp_mb();                              /* pairs with CPU SPTE updates */
+	}
 
         for_each_valid_tdp_mmu_root_yield_safe(kvm, root, slot->as_id) {
                 rcu_read_lock();
@@ -1676,32 +1666,32 @@ bool kvm_tdp_mmu_fmsync_dirty_log(struct kvm                     *kvm,
                         if (!is_shadow_present_pte(iter.old_spte))
                                 continue;
 
-                        /* Compute overlap with the real slot. */
                         leaf_start = max(iter.gfn, start_gfn);
                         leaf_end   = min(iter.gfn +
                                             KVM_PAGES_PER_HPAGE(iter.level),
                                          end_gfn);
                         if (leaf_start >= leaf_end)
-                                continue;      /* leaf outside slot */
+                                continue;
 
                         if (!is_dirty_spte(iter.old_spte))
                                 continue;
 
-                        /* ---- mark bitmap ---- */
-                        if (is_huge) {                         /* 2 MiB idx */
+                        if (is_huge) {
                                 idx = (leaf_start - start_gfn) >>
                                       (HPAGE_SHIFT - PAGE_SHIFT);
                                 set_bit(idx, slot->fmsync_dirty_bitmap);
-                        } else if (iter.level == PG_LEVEL_4K) { /* 4 K leaf */
+				base_count_a++;
+                        } else if (iter.level == PG_LEVEL_4K) {
                                 idx = leaf_start - start_gfn;
+				base_count_b++;
                                 set_bit(idx, slot->fmsync_dirty_bitmap);
-                        } else {                               /* 2 MiB leaf */
+                        } else {
                                 idx = leaf_start - start_gfn;
                                 bitmap_set(slot->fmsync_dirty_bitmap,
                                            idx, leaf_end - leaf_start);
+				base_count_c++;
                         }
 
-                        /* ---- clear D-bit *and* write permission ---- */
                         new_spte = iter.old_spte &
                                    ~(shadow_dirty_mask | PT_WRITABLE_MASK);
 
@@ -1715,8 +1705,214 @@ bool kvm_tdp_mmu_fmsync_dirty_log(struct kvm                     *kvm,
                 rcu_read_unlock();
         }
 
+
+	printk("%llu, %llu, %llu\n", base_count_a, base_count_b, base_count_c);
         return flush_needed;
+}*/
+
+/*
+ * Collect dirty GFNs for a memory slot into @slot->fmsync_dirty_bitmap.
+ *
+ * – When @is_huge is true we track at 2 MiB granularity
+ *   (one bitmap bit == one 2 MiB page).
+ * – When @is_huge is false we track at 4 KiB granularity
+ *   AND we first expand any residual 2 MiB bits into 512 × 4 KiB bits
+ *   so that the bitmap semantics become uniform.
+ *
+ * Caller must hold kvm->mmu_lock for write.
+ */
+bool kvm_tdp_mmu_fmsync_dirty_log(struct kvm *kvm,
+				  const struct kvm_memory_slot *slot,
+				  bool is_huge)
+{
+	struct kvm_mmu_page *root;
+	struct tdp_iter iter;
+	unsigned long idx;
+	unsigned long a = 0, b = 0, c = 0;
+	bool flush_needed = false;
+//	static int split_done = 0;
+//	int split_yes = 0;
+
+	const gfn_t start_gfn = slot->base_gfn;
+	const gfn_t end_gfn   = slot->base_gfn + slot->npages;        /* exclusive */
+	const gfn_t walk_lo   = ALIGN_DOWN(start_gfn,
+				    KVM_PAGES_PER_HPAGE(PG_LEVEL_2M));
+	const gfn_t walk_hi   = ALIGN(end_gfn,
+			       KVM_PAGES_PER_HPAGE(PG_LEVEL_2M));
+
+	lockdep_assert_held_write(&kvm->mmu_lock);
+
+	/* ---------------------------------------------------- */
+	/* 1.  Switch to 4 K leaves when fine-grained requested */
+	/* ---------------------------------------------------- */
+	if (!is_huge) {
+		kvm_mmu_try_split_huge_pages(kvm, slot,
+			       start_gfn, end_gfn,
+			       PG_LEVEL_4K);
+//		kvm_tdp_mmu_wrprot_slot(kvm, slot, PG_LEVEL_4K);
+	}
+
+	/* 2.  Walk leaves, mark bitmap, clear D+W bits */
+	for_each_valid_tdp_mmu_root_yield_safe(kvm, root, slot->as_id) {
+		rcu_read_lock();
+
+		tdp_root_for_each_leaf_pte(iter, root, walk_lo, walk_hi) {
+			u64 new_spte;
+			gfn_t leaf_start, leaf_end;
+
+			if (!is_shadow_present_pte(iter.old_spte))
+				continue;
+/*
+			if (!is_huge && iter.level != PG_LEVEL_4K) {
+				struct kvm_mmu_page *child =
+					tdp_mmu_alloc_sp_for_split(kvm, &iter, false);
+				if (child) {
+					if (tdp_mmu_split_huge_page(kvm, &iter,
+				 child, false))
+						tdp_mmu_free_sp(child);
+					tdp_iter_restart(&iter);
+					split_yes++;
+					continue;
+				}
+			}*/
+
+			/* compute overlap … (unchanged) */
+			leaf_start = max(iter.gfn, start_gfn);
+			leaf_end   = min(iter.gfn +
+		    KVM_PAGES_PER_HPAGE(iter.level),
+		    end_gfn);
+			if (leaf_start >= leaf_end ||
+				!is_dirty_spte(iter.old_spte))
+				continue;
+
+			/* ---- mark bitmap ---- */
+			if (is_huge) {                     /* 2 M index */
+				idx = (leaf_start - start_gfn) >>
+					(HPAGE_SHIFT - PAGE_SHIFT);
+				set_bit(idx, slot->fmsync_dirty_bitmap);
+				a++;
+			} else if (iter.level == PG_LEVEL_4K) {
+				idx = leaf_start - start_gfn;
+				set_bit(idx, slot->fmsync_dirty_bitmap);
+				b++;
+			} else {                          /* residual 2 M */
+				idx = leaf_start - start_gfn;
+				bitmap_set(slot->fmsync_dirty_bitmap,
+	       idx, leaf_end - leaf_start);
+				c++;
+			}
+
+			/* ---- clear D-bit and write ---- */
+			new_spte = iter.old_spte &
+				~(shadow_dirty_mask | PT_WRITABLE_MASK);
+
+			if (tdp_mmu_set_spte_atomic(kvm, &iter, new_spte))
+				kvm_flush_remote_tlbs_range(kvm, iter.gfn,
+				KVM_PAGES_PER_HPAGE(iter.level));
+
+			flush_needed = true;
+		}
+		rcu_read_unlock();
+	}
+	printk("%lu (2M-idx), %lu (4K), %lu (2M-leaf), flush=%d\n",
+	  a, b, c, flush_needed);
+
+	return flush_needed;
 }
+/*
+bool kvm_tdp_mmu_fmsync_dirty_log(struct kvm               *kvm,
+				  const struct kvm_memory_slot *slot,
+				  bool                         is_huge)
+{
+	struct kvm_mmu_page *root;
+	struct tdp_iter iter;
+	unsigned long idx;
+	static bool split_done = false;
+	bool flush_needed = false;
+	const gfn_t start_gfn = slot->base_gfn;
+	const gfn_t end_gfn   = slot->base_gfn + slot->npages;
+	const gfn_t walk_lo   = ALIGN_DOWN(start_gfn,
+				    KVM_PAGES_PER_HPAGE(PG_LEVEL_2M));
+	const gfn_t walk_hi   = ALIGN(end_gfn,
+			       KVM_PAGES_PER_HPAGE(PG_LEVEL_2M));
+	int a = 0, b = 0, c = 0, split_yes = 0;
+
+	lockdep_assert_held_write(&kvm->mmu_lock);
+
+        for_each_valid_tdp_mmu_root_yield_safe(kvm, root, slot->as_id) {
+                rcu_read_lock();
+
+                tdp_root_for_each_leaf_pte(iter, root, walk_lo, walk_hi) {
+			u64 new_spte;
+			gfn_t leaf_start, leaf_end;
+
+			if (!is_shadow_present_pte(iter.old_spte))
+				continue;
+			if (!is_huge && !split_done && iter.level != PG_LEVEL_4K) {
+				struct kvm_mmu_page *child = tdp_mmu_alloc_sp_for_split(kvm, &iter, false);
+				if (!child)
+					continue;
+
+				if (tdp_mmu_split_huge_page(kvm, &iter, child, false)) {
+					tdp_mmu_free_sp(child);
+				}
+
+				tdp_iter_restart(&iter);
+				split_yes++;
+				continue;
+			}
+
+                        leaf_start = max(iter.gfn, start_gfn);
+                        leaf_end   = min(iter.gfn +
+                                            KVM_PAGES_PER_HPAGE(iter.level),
+                                         end_gfn);
+                        if (leaf_start >= leaf_end)
+                                continue;
+
+                        if (!is_dirty_spte(iter.old_spte))
+                                continue;
+
+                        if (is_huge) {
+                                idx = (leaf_start - start_gfn) >>
+                                      (HPAGE_SHIFT - PAGE_SHIFT);
+                                set_bit(idx, slot->fmsync_dirty_bitmap);
+				a++;
+                        } else if (iter.level == PG_LEVEL_4K) {
+                                idx = leaf_start - start_gfn;
+                                set_bit(idx, slot->fmsync_dirty_bitmap);
+				b++;
+                        } else {
+                                idx = leaf_start - start_gfn;
+                                bitmap_set(slot->fmsync_dirty_bitmap,
+                                           idx, leaf_end - leaf_start);
+				c++;
+                        }
+                        new_spte = iter.old_spte &
+                                   ~(shadow_dirty_mask | PT_WRITABLE_MASK);
+
+                        if (tdp_mmu_set_spte_atomic(kvm, &iter, new_spte))
+                                kvm_flush_remote_tlbs_range(kvm, iter.gfn,
+                                        KVM_PAGES_PER_HPAGE(iter.level));
+
+                        flush_needed = true;
+                }
+                rcu_read_unlock();
+        }
+	if (!is_huge && !split_done ) {
+		printk("in spliting phase\n");
+		kvm_mmu_try_split_huge_pages(kvm, slot, start_gfn, end_gfn, PG_LEVEL_4K);
+		kvm_tdp_mmu_wrprot_slot(kvm, slot, PG_LEVEL_4K);
+	}
+	if (!is_huge && !split_done ) {
+		split_done = true;
+	}
+
+
+	printk("%i, %i, %i, %i\n", a, b, c, split_yes);
+	return flush_needed;
+}*/
+
+
 /*bool kvm_tdp_mmu_fmsync_dirty_log(struct kvm *kvm,
                                   const struct kvm_memory_slot *slot,
                                   bool is_huge)
