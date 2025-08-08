@@ -1790,16 +1790,16 @@ bool kvm_tdp_mmu_fmsync_dirty_log(struct kvm *kvm,
 				idx = (leaf_start - start_gfn) >>
 					(HPAGE_SHIFT - PAGE_SHIFT);
 				set_bit(idx, slot->fmsync_dirty_bitmap);
-				a++;
+//				a++;
 			} else if (iter.level == PG_LEVEL_4K) {
 				idx = leaf_start - start_gfn;
 				set_bit(idx, slot->fmsync_dirty_bitmap);
-				b++;
+//				b++;
 			} else {                          /* residual 2 M */
 				idx = leaf_start - start_gfn;
 				bitmap_set(slot->fmsync_dirty_bitmap,
 	       idx, leaf_end - leaf_start);
-				c++;
+//				c++;
 			}
 
 			/* ---- clear D-bit and write ---- */
@@ -1814,8 +1814,8 @@ bool kvm_tdp_mmu_fmsync_dirty_log(struct kvm *kvm,
 		}
 		rcu_read_unlock();
 	}
-	printk("%lu (2M-idx), %lu (4K), %lu (2M-leaf), flush=%d\n",
-	  a, b, c, flush_needed);
+//	printk("%lu (2M-idx), %lu (4K), %lu (2M-leaf), flush=%d\n",
+//	  a, b, c, flush_needed);
 
 	return flush_needed;
 }
