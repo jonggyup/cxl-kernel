@@ -587,6 +587,11 @@ struct kvm_dirty_log {
 		void __user *dirty_bitmap; /* one bit per page */
 		__u64 padding2;
 	};
+	union {
+		void __user *read_bitmap; /* one bit per page */
+		__u64 padding3;
+	};
+
 };
 
 /* for KVM_CLEAR_DIRTY_LOG */
@@ -598,6 +603,11 @@ struct kvm_clear_dirty_log {
 		void __user *dirty_bitmap; /* one bit per page */
 		__u64 padding2;
 	};
+	union {
+		void __user *read_bitmap; /* one bit per page */
+		__u64 padding3;
+	};
+
 };
 
 /* for KVM_SET_SIGNAL_MASK */

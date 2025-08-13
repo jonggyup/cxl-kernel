@@ -2339,7 +2339,12 @@ static int kvm_fmsync_get_dirty_log(struct kvm *kvm, struct kvm_dirty_log *log, 
 		} */
         memset(memslot->fmsync_dirty_bitmap, 0, n);
 	}
-
+	if (!is_huge){
+		if (!memslot->fmsync_read_bitmap)
+			memslot->fmsync_read_bitmap = (unsigned long *)kzalloc(n_base, GFP_KERNEL);
+		else
+			memset(memslot->fmsync_read_bitmap, 0, n_base);
+	}
 	kvm_flush_remote_tlbs_memslot(kvm, memslot);
 	// pull the dirty info
 	KVM_MMU_LOCK(kvm);
@@ -2351,6 +2356,8 @@ static int kvm_fmsync_get_dirty_log(struct kvm *kvm, struct kvm_dirty_log *log, 
 
 	// printk("[fmsync]: log[%ld bytes] copy to user %ld bytes.\n", sizeof(log->dirty_bitmap), n);
 	if (copy_to_user(log->dirty_bitmap, memslot->fmsync_dirty_bitmap, n))
+		return -EFAULT;
+	if (!is_huge && copy_to_user(log->read_bitmap, memslot->fmsync_read_bitmap, n_base))
 		return -EFAULT;
 
 	return 0;

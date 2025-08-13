@@ -585,6 +585,7 @@ struct kvm_memory_slot {
 	unsigned long npages;
 	unsigned long *dirty_bitmap;
 	unsigned long *fmsync_dirty_bitmap; // Zezhou: huge-page granularity dirty bitmap.
+	unsigned long *fmsync_read_bitmap; // Zezhou: huge-page granularity dirty bitmap.
 	struct kvm_arch_memory_slot arch;
 	unsigned long userspace_addr;
 	u32 flags;
@@ -1323,7 +1324,7 @@ void kvm_vcpu_mark_page_dirty(struct kvm_vcpu *vcpu, gfn_t gfn);
  * @vcpu:	   vCPU to be used for marking pages dirty and to be woken on
  *		   invalidation.
  * @usage:	   indicates if the resulting host physical PFN is used while
- *		   the @vcpu is IN_GUEST_MODE (in which case invalidation of 
+ *		   the @vcpu is IN_GUEST_MODE (in which case invalidation of
  *		   the cache from MMU notifiers---but not for KVM memslot
  *		   changes!---will also force @vcpu to exit the guest and
  *		   refresh the cache); and/or if the PFN used directly
