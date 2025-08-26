@@ -1728,7 +1728,6 @@ bool kvm_tdp_mmu_fmsync_dirty_log(struct kvm *kvm,
 	struct kvm_mmu_page *root;
 	struct tdp_iter iter;
 	unsigned long idx;
-	unsigned long a = 0, b = 0, c = 0;
 	bool flush_needed = false;
 //	static int split_done = 0;
 //	int split_yes = 0;
@@ -1741,6 +1740,8 @@ bool kvm_tdp_mmu_fmsync_dirty_log(struct kvm *kvm,
 			       KVM_PAGES_PER_HPAGE(PG_LEVEL_2M));
 
 	lockdep_assert_held_write(&kvm->mmu_lock);
+	bitmap_zero(slot->fmsync_dirty_bitmap, slot->npages);
+
 
 	/* ---------------------------------------------------- */
 	/* 1.  Switch to 4 K leaves when fine-grained requested */
