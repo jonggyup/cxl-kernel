@@ -200,7 +200,7 @@ static inline bool vma_can_userfault(struct vm_area_struct *vma,
 
 	/* By default, allow any of anon|shmem|hugetlb */
 	return vma_is_anonymous(vma) || is_vm_hugetlb_page(vma) ||
-	    vma_is_shmem(vma);
+	    vma_is_shmem(vma) || vma_is_dax(vma);
 }
 
 extern int dup_userfaultfd(struct vm_area_struct *, struct list_head *);
@@ -352,6 +352,20 @@ static inline bool userfaultfd_wp_use_markers(struct vm_area_struct *vma)
 	 */
 	return userfaultfd_wp_unpopulated(vma);
 }
+//Jonggyu: This function has been modified so dax is not using the marker
+/*static inline bool userfaultfd_wp_use_markers(struct vm_area_struct *vma)
+{
+    if (!userfaultfd_wp(vma))
+        return false;
+
+    if (vma_is_dax(vma))
+        return false;
+
+    if (!vma_is_anonymous(vma))
+        return true;
+
+    return userfaultfd_wp_unpopulated(vma);
+}*/
 
 static inline bool pte_marker_entry_uffd_wp(swp_entry_t entry)
 {

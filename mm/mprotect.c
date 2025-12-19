@@ -166,6 +166,11 @@ static long change_pte_range(struct mmu_gather *tlb,
 			oldpte = ptep_modify_prot_start(vma, addr, pte);
 			ptent = pte_modify(oldpte, newprot);
 
+			if (uffd_wp && vma_is_dax(vma)) {
+				pr_info("uffd-wp: dax writeprotect addr=%lx oldpte=%lx newpte=%lx\n",
+	    addr, pte_val(oldpte), pte_val(ptent));
+			}
+
 			if (uffd_wp)
 				ptent = pte_mkuffd_wp(ptent);
 			else if (uffd_wp_resolve)
